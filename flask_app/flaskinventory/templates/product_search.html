@@ -1,0 +1,80 @@
+{% extends "overview.html" %}
+{% block content %}
+<div class="container">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+     {%if messages %}
+          {%for category, message in messages %}
+            <div class="alert alert-{{ category }}">
+               <h4 style="text-align:center;">{{ message }}</h4>
+            </div>
+          {%endfor%}
+    {%endif %}
+  {%endwith%}
+</div>
+<div class="container">
+
+<h1>Rechercher un produit</h1>
+<p>Rechercher un produits dans la liste des produits présent dans le stock de l'entrepot principal</p>
+
+  <form action="{{ url_for('product_search') }}" method="POST">
+    {{ form.csrf_token }}
+    <div class="form-group">
+        <label for="search_query">Recherche:</label>
+        <input type="text" class="form-control typeahead" id="search_query" name="query" placeholder="Entrer le nom d'un produit">
+    </div>
+    <button type="submit" class="btn btn-primary">Rechercher</button>
+  </form>
+  <h2>Resultat</h2>
+  {% if results %}
+    <ul>
+      {% for result in results %}
+        <li>{{ result['_source']['prod_name'] }} - {{ result['_source']['prod_qty'] }}</li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p>Aucun résultat trouvé</p>
+  {% endif %}
+</div>
+{% endblock content %}
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/4.5.2/js/bootstrap.bundle.min.js" integrity="sha512-/k89GM1bQCHjTmgafjf0b5eUbv5FCGeTPuN6IaOJvU5/DhQz4zic8UczQvVeV+ZUq2XwiG+3qaX5v7FZz0YOgg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/typeahead.js/0.11.1/typeahead.jquery.js" integrity="sha512-W6rpPvr6GuC2Z+7jWfy4hn4KTlyG+HZP3NAllreIixhP5KEMFa48K9Jw6DCfKdh7RsKsl/PiBpee8Zv6SpLImw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/typeahead.js/0.11.1/bloodhound.js" integrity="sha512-QC7UeZNmZ4mAMCL6PcRXp1prlfz2EpCLwh4aBH2lOii/HMAdqsP8LyMY4xMn50AQicajB9OrbvNkc09EMaQ8hg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+<script>
+  $(document).ready(function () {
+    var products = new Bloodhound({
+      datumTokenizer: Bloodhound.tokenizers.whitespace,
+      queryTokenizer: Bloodhound.tokenizers.whitespace,
+      remote: {
+        url: '/search_product?query=%QUERY',
+        wildcard: '%QUERY'
+      }
+    });
+
+    $('.typeahead').typeahead({
+      hint: true,
+      highlight: true,
+      minLength: 1
+    }, {
+      name: 'products',
+      display: 'value',
+      source: products
+    })
+    .on('typeahead:select', function(event, suggestion) {
+      console.log('Selected suggestion:', suggestion);
+    })
+    .on('typeahead:autocomplete', function(event, suggestion) {
+      console.log('Autocompleted suggestion:', suggestion);
+    })
+    .on('typeahead:open', function() {
+      console.log('Dropdown opened');
+    })
+    .on('typeahead:close', function() {
+      console.log('Dropdown closed');
+    });
+
+    console.log("Auto-completion initialized.");
+  });
+</script>

@@ -1,53 +1,104 @@
-version: '3.8'
+version: '3'
 
 services:
-  task-service:
-    image: wmezz/task-service:v1
+
+  # Service du backend ElasticSearch
+  elasticsearch:
+    build:
+      context: ./elastic_backend
+    environment:
+      - discovery.type=single-node
+    ports:
+      - "9200:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl --silent --fail localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - my-network
+
+  # Service du frontend Flask
+  flask-frontend:
+    build:
+      context: ./flask_app
+    environment:
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
     ports:
       - "5000:5000"
-    environment:
-      - MONGO_URI=mongodb://culinarydb:YA81MlahfM8LsDLqnxcy1fNch0gS9ikYrMoFNurDfBSjStf3fC8JJ5BZ7k9OWBZpl750lSoNUnC4ACDb2lMf4g==@culinarydb.mongo.cosmos.azure.com:10255/?ssl=true&replicaSet=globaldb&retrywrites=false&maxIdleTimeMS=120000&appName=@culinarydb@
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
     networks:
-      - taskmanagernetwork
+      - my-network
+      - mynetworknginx
 
-  frontend:
-    image: wmezz/frontend:v1
+  nginx-proxy:
+    image: nginx
+    container_name: nginx-proxy
     ports:
       - "80:80"
-    networks:
-      - taskmanagernetwork
-      
-  notification-service:
-    image: wmezz/notification-service:v1
-    ports:
-      - "6000:6000"
-    networks:
-      - taskmanagernetwork
-
-  rabbitmq:
-    image: "rabbitmq"
-    ports:
-      - "15672:15672"
-      - "5672:5672"
-    networks:
-      - taskmanagernetwork
-
-  prometheus:
-    image: prom/prometheus:latest
-    ports:
-      - "9090:9090"
+      - "443:443"
+    networks: 
+      - mynetworknginx
     volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
-    networks:
-      - taskmanagernetwork
-  
-  grafana:
-    image: grafana/grafana:latest
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./certs:/etc/nginx/certs
+    depends_on:
+      - flask-frontend
+    restart: always
+
+  tests:
+    build:
+      context: ./test
+    depends_on:
+      - flask-frontend
+      - elasticsearch
+    volumes:
+      - ./flask_app:/app
+      - ./test:/tests
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:7.9.3
     ports:
-      - "3000:3000"
+      - "5001:5000"
+    volumes:
+      - ./logstash.conf:/usr/share/logstash/pipeline/logstash.conf
+    depends_on:
+        elasticsearch:
+          condition: service_healthy
     networks:
-      - taskmanagernetwork
+      - my-network
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:7.9.3
+    environment:
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+    ports:
+        - "5601:5601"
+    depends_on:
+      elasticsearch:
+          condition: service_healthy
+    networks:
+      - my-network
+
+  metricbeat:
+    image: docker.elastic.co/beats/metricbeat:7.9.3
+    user: root
+    volumes:
+      - /proc:/hostfs/proc:ro
+      - /sys/fs/cgroup:/hostfs/sys/fs/cgroup:ro
+      - /:/hostfs:ro
+      - ./metricbeat/metricbeat.yml:/usr/share/metricbeat/metricbeat.yml:ro
+    command: ["-e","-strict.perms=false"]
+    depends_on:
+      elasticsearch:
+          condition: service_healthy
+    networks:
+      - my-network
 
 networks:
-  taskmanagernetwork:
-    external: true
+  my-network:
+    driver: bridge
+  mynetworknginx:
+    driver: bridge
